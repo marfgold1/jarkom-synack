@@ -27,8 +27,17 @@ class Connection:
 
     def listen_single_segment(self) -> Segment:
         # Listen single UDP datagram within timeout and convert into segment
-        pass
+        while True:
+            try:
+                segment, addr = self.socket.recvfrom(length)
+            except TimeoutError:
+                continue
+            except KeyboardInterrupt:
+                exit(0)
+            break
+        addr = Address(*addr)
+        return Segment.from_bytes(segment), addr
 
     def close_socket(self):
         # Release UDP socket
-        pass
+        self.socket.close()
