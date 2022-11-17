@@ -1,5 +1,5 @@
 import struct
-from dataclasses import astuple, dataclass
+from dataclasses import astuple, dataclass, field
 from typing import Type
 
 # Constants
@@ -88,7 +88,7 @@ class SegmentFlag(object):
 class Segment(object):
     seq_num: int = 0
     ack_num: int = 0
-    flags: SegmentFlag = SegmentFlag()
+    flags: SegmentFlag = field(default_factory=SegmentFlag)
     checksum: int = 0
     payload: bytes = b''
 
