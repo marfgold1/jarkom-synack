@@ -91,7 +91,7 @@ class Connection(object):
             return
         segment, addr = data
         if segment.flags.test(fin=True, ack=True):
-            Logger.log(f'[!] [<{addr}] Received FIN-ACK.', 2)
+            Logger.log(f'[!] [Handshake|FIN-ACK] [<{addr}] Received FIN-ACK.', 2)
 
     def _parallel_listen(
         self,

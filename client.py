@@ -72,17 +72,43 @@ class Client(object):
         # File transfer, client-side
         Logger.log('[!] [File Transfer] Waiting for file transfer...', 3)
         seq_base = 0
-        segment, addr = self.conn.listen_single_segment(None)
-        if segment.flags.test(meta=True):
+        while True:
+            segment, addr = self.conn.listen_single_segment(None)
+            if segment.flags.test(meta=True):
+                file_meta = Metadata.from_bytes(segment.payload)
+                # Send ack META
+                self.conn.send_data(
+                    Segment(
+                        flags=SegmentFlag(ack=True, meta=True),
+                    ),
+                    addr,
+                )
+                Logger.log([
+                    f'[Segment META] [<{addr}] Received META segment',
+                    'from the server. Sent META-ACK. Starting file transfer.',
+                ], 3)
+                break
             Logger.log([
-                f'[Segment META] [<{addr}] Received file metadata',
-                'from the server. Starting file transfer.',
-            ], 3)
-            file_meta = Metadata.from_bytes(segment.payload)
+                '[!] [Segment META] Invalid segment, expected META segment.',
+                'Ignored.',
+            ], 1)
         with open(self.path_output / file_meta.file_name, 'wb') as file:
             last_payload = None
             while True:
                 segment, addr = self.conn.listen_single_segment(None, addr)
+                if segment.flags.test(meta=True):
+                    # Reack META
+                    self.conn.send_data(
+                        Segment(
+                            flags=SegmentFlag(ack=True, meta=True),
+                        ),
+                        addr,
+                    )
+                    Logger.log([
+                        f'[!] [Segment META] [<{addr}] Received META',
+                        'during file transfer. Ignored, resent META-ACK.',
+                    ], 1)
+                    continue
                 if segment.flags.test(fin=True):
                     self.conn.close_socket(addr)
                     break

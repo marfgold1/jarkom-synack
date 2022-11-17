@@ -95,21 +95,43 @@ class Server:
             f'({seq_len} segments).',
         ], 3)
         # Send metadata
-        self.conn.send_data(
-            Segment(
-                flags=SegmentFlag(meta=True),
-                payload=Metadata(
-                    self.file_size,
-                    seq_len,
-                    self.path_file.name,
-                ).to_bytes(),
-            ),
-            client_addr,
-        )
-        Logger.log(
-            f'[!] [File Transfer] [{client_addr}] Sent metadata to client.',
-            2,
-        )
+        while True:
+            self.conn.send_data(
+                Segment(
+                    flags=SegmentFlag(meta=True),
+                    payload=Metadata(
+                        self.file_size,
+                        seq_len,
+                        self.path_file.name,
+                    ).to_bytes(),
+                ),
+                client_addr,
+            )
+            Logger.log(
+                f'[!] [File Transfer] [{client_addr}] Sent META to client.',
+                2,
+            )
+            # Wait for META-ACK
+            data = self.conn.listen_single_segment(
+                handshake_timeout,
+                client_addr,
+            )
+            if data is None or not data[0].flags.test(meta=True, ack=True):
+                Logger.log([
+                    f'[!] [File Transfer] [{client_addr}]',
+                    'Client did not respond to META. Resend META.',
+                ], 1)
+                current_retry += 1
+                if current_retry > max_retry:
+                    Logger.log([
+                        f'[!] [File Transfer] [{client_addr}]',
+                        'Max retries reached for META.',
+                        'Aborted (assuming connection closed).',
+                    ], 3)
+                    return
+            else:
+                break
+        current_retry = 0
         # Send file
         with open(self.path_file, 'rb') as file:
             while seq_base < seq_len:  # loop for entire length segment
