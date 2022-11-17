@@ -4,13 +4,12 @@ from io import BufferedReader
 from math import ceil
 from pathlib import Path
 
-from lib.connection import Address, Connection, handshake_timeout
+from config import config
+from lib.connection import Address, Connection
 from lib.connection import signature_buffer as sign_buf
 from lib.helper import FileValidator, Metadata
 from lib.segment import Segment, SegmentFlag, payload_length
 from logger import Logger
-
-WINDOW_SIZE = 5
 
 
 class Server:
@@ -79,7 +78,7 @@ class Server:
         )
         Logger.log(f'[Segment SEQ={seq}] [>{client_addr}] Sent.', 2)
 
-    def file_transfer(self, client_addr: Address, max_retry=3):
+    def file_transfer(self, client_addr: Address):
         if not self.three_way_handshake(client_addr):
             Logger.log([
                 f'[!] [File Transfer] [{client_addr}]',
@@ -113,7 +112,7 @@ class Server:
             )
             # Wait for META-ACK
             data = self.conn.listen_single_segment(
-                handshake_timeout,
+                config.TIMEOUT_HANDSHAKE,
                 client_addr,
             )
             if data is None or not data[0].flags.test(meta=True, ack=True):
@@ -122,7 +121,7 @@ class Server:
                     'Client did not respond to META. Resend META.',
                 ], 1)
                 current_retry += 1
-                if current_retry > max_retry:
+                if current_retry > config.MAX_RETRY:
                     Logger.log([
                         f'[!] [File Transfer] [{client_addr}]',
                         'Max retries reached for META.',
@@ -135,17 +134,20 @@ class Server:
         # Send file
         with open(self.path_file, 'rb') as file:
             while seq_base < seq_len:  # loop for entire length segment
-                seq_max = min(seq_base + WINDOW_SIZE, seq_len)
+                seq_max = min(seq_base + config.WINDOW_SIZE, seq_len)
                 for seq in range(seq_base, seq_max):
                     self.__send_file_segment(file, seq, client_addr)
                 while seq_base < seq_len:  # loop for all ack
                     # Wait for ACK
-                    data = self.conn.listen_single_segment(1, client_addr)
+                    data = self.conn.listen_single_segment(
+                        config.TIMEOUT_FILE,
+                        client_addr,
+                    )
                     # if timeout, go back n
                     if data is None:
                         current_retry += 1
                         # we limit go back n to max_tries times
-                        if current_retry >= max_retry:
+                        if current_retry > config.MAX_RETRY:
                             Logger.log([
                                 f'[!] [File Transfer] [{client_addr}] Max',
                                 'retry reached, assuming connection closed.',
@@ -171,10 +173,10 @@ class Server:
                         ], 2)
                         seq_base += 1
                         # Send next seq if available
-                        if seq_base + WINDOW_SIZE - 1 < seq_len:
+                        if seq_base + config.WINDOW_SIZE - 1 < seq_len:
                             self.__send_file_segment(
                                 file,
-                                seq_base + WINDOW_SIZE - 1,
+                                seq_base + config.WINDOW_SIZE - 1,
                                 client_addr,
                             )
                     else:
@@ -193,7 +195,10 @@ class Server:
             f'[!] [Handshake] [?{client_addr}]',
             f'Waiting for FIN from {client_addr}.',
         ], 1)
-        data = self.conn.listen_single_segment(handshake_timeout, client_addr)
+        data = self.conn.listen_single_segment(
+            config.TIMEOUT_HANDSHAKE,
+            client_addr,
+        )
         if data is None:
             Logger.log([
                 f'[!] [Handshake] [{client_addr}] FIN not received.',
@@ -216,7 +221,10 @@ class Server:
             f'[!] [Handshake] [?{client_addr}]',
             'Waiting for client SYN-ACK...',
         ], 1)
-        data = self.conn.listen_single_segment(handshake_timeout, client_addr)
+        data = self.conn.listen_single_segment(
+            config.TIMEOUT_HANDSHAKE,
+            client_addr,
+        )
         if data is None:
             Logger.log([
                 f'[!] [Handshake] [{client_addr}]',
@@ -262,7 +270,7 @@ if __name__ == '__main__':
         '-v',
         '--verbose',
         action='count',
-        default=0,
+        default=config.VERBOSE,
         help='Verbosity level.',
     )
     args_parser.add_argument(
@@ -271,7 +279,42 @@ if __name__ == '__main__':
         action='store_true',
         help='Send file to all clients in parallel.',
     )
+    args_parser.add_argument(
+        '-t',
+        '--timeout',
+        type=float,
+        nargs='+',
+        default=[config.TIMEOUT_HANDSHAKE, config.TIMEOUT_FILE],
+        help=' '.join([
+            'Timeout for handshake and file transfer.',
+            'Specify one value to set both the same value.',
+        ]),
+    )
+    args_parser.add_argument(
+        '-ws',
+        '--window-size',
+        type=int,
+        default=config.WINDOW_SIZE,
+        help='Window size for file transfer.',
+    )
+    args_parser.add_argument(
+        '-r',
+        '--max-retry',
+        type=int,
+        default=5,
+        help='Max retry for file transfer.',
+    )
     args = args_parser.parse_args()
+    if len(args.timeout) > 2:
+        args_parser.error('Too many timeout values.')
+    elif len(args.timeout) == 1:
+        config.TIMEOUT_HANDSHAKE = args.timeout[0]
+        config.TIMEOUT_FILE = args.timeout[0]
+    else:
+        config.TIMEOUT_HANDSHAKE = args.timeout[0]
+        config.TIMEOUT_FILE = args.timeout[1]
+    config.WINDOW_SIZE = args.window_size
+    config.MAX_RETRY = args.max_retry
     main = Server(
         args.path_file_input,
         port=args.broadcast_port,

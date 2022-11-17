@@ -1,7 +1,8 @@
 import argparse
 from pathlib import Path
 
-from lib.connection import Address, Connection, handshake_timeout
+from config import config
+from lib.connection import Address, Connection
 from lib.helper import DirectoryValidator, Metadata
 from lib.segment import Segment, SegmentFlag, payload_length, signature
 from logger import Logger
@@ -54,7 +55,7 @@ class Client(object):
         Logger.log(
             f'[!] [Handshake] [?{addr}] Waiting server response for ACK', 1,
         )
-        data = self.conn.listen_single_segment(handshake_timeout, addr)
+        data = self.conn.listen_single_segment(config.TIMEOUT_HANDSHAKE, addr)
         if not data:
             Logger.log(
                 f'[!] [Handshake|ACK] [?{addr}] Server ACK response timeout.',
@@ -95,7 +96,17 @@ class Client(object):
         with open(self.path_output / file_meta.file_name, 'wb') as file:
             last_payload = None
             while True:
-                segment, addr = self.conn.listen_single_segment(None, addr)
+                data = self.conn.listen_single_segment(
+                    config.TIMEOUT_FILE,
+                    addr,
+                )
+                if data is None:
+                    Logger.log([
+                        f'[!] [File Transfer] [?{addr}] File transfer',
+                        'timeout. Aborting (assuming client disconnected).',
+                    ], 2)
+                    return False
+                segment, addr = data
                 if segment.flags.test(meta=True):
                     # Reack META
                     self.conn.send_data(
@@ -191,10 +202,29 @@ if __name__ == '__main__':
         '-v',
         '--verbose',
         action='count',
-        default=0,
+        default=config.VERBOSE,
         help='Verbosity level.',
     )
+    args_parser.add_argument(
+        '-t',
+        '--timeout',
+        type=float,
+        nargs='+',
+        default=[config.TIMEOUT_HANDSHAKE, config.TIMEOUT_FILE],
+        help=' '.join([
+            'Timeout for handshake and file transfer.',
+            'Specify one value to set both the same value.',
+        ]),
+    )
     args = args_parser.parse_args()
+    if len(args.timeout) > 2:
+        args_parser.error('Too many timeout values.')
+    elif len(args.timeout) == 1:
+        config.TIMEOUT_HANDSHAKE = args.timeout[0]
+        config.TIMEOUT_FILE = args.timeout[0]
+    else:
+        config.TIMEOUT_HANDSHAKE = args.timeout[0]
+        config.TIMEOUT_FILE = args.timeout[1]
     default_port = 1234
     main = Client(
         args.path_output,

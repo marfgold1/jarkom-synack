@@ -5,11 +5,11 @@ from queue import Queue
 from threading import Thread
 from typing import NamedTuple, Tuple
 
+from config import config
 from lib.segment import Segment, SegmentFlag, segment_length
 from logger import Logger
 
 signature_buffer = 'signature'
-handshake_timeout = 3
 
 
 class Address(NamedTuple):
@@ -82,7 +82,10 @@ class Connection(object):
             client_addr,
         )
         Logger.log(f'[!] [Handshake] [?{client_addr}] Waiting for FIN-ACK.', 1)
-        data = self.listen_single_segment(handshake_timeout, client_addr)
+        data = self.listen_single_segment(
+            config.TIMEOUT_HANDSHAKE,
+            client_addr,
+        )
         if data is None:
             Logger.log([
                 f'[!] [Handshake|FIN-ACK] [{client_addr}] FIN-ACK',
