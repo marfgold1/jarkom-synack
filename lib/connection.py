@@ -78,6 +78,8 @@ class Connection(object):
             for interface in available_interface:
                 print(f'[{i}] {interface[0]}: {interface[1]}')
                 i += 1
+            print(f'[{i}] All interface')
+            i += 1
             print('[!] ====================')
             x = input('[?] Select interface number you want to choose: ')
             if not x.isnumeric():
@@ -88,7 +90,8 @@ class Connection(object):
                 print('[!] Input is out of range!')
                 continue
             break
-        Logger.log(f'[!] Selected interface: {available_interface[x - 1][1]}')
+        available_interface.append(('All interface', ''))
+        Logger.log(f'[!] Selected interface: {available_interface[x - 1][0]}')
         return cls(
             **kwargs,
             ip=available_interface[x - 1][1],

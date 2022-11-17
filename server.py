@@ -17,7 +17,7 @@ class Server:
         # Init server
         self.path_file = path_file
         self.conn = Connection.create_from_interface(
-            port=port,
+            bind_port=port,
             parallel=parallel,
         )
         self.clients = []
