@@ -1,4 +1,5 @@
 import argparse
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from io import BufferedReader
 from math import ceil
@@ -16,10 +17,13 @@ class Server:
     def __init__(self, path_file: Path, port=1234, parallel=False):
         # Init server
         self.path_file = path_file
-        self.conn = Connection.create_from_interface(
-            bind_port=port,
-            parallel=parallel,
-        )
+        if sys.platform == 'win32':
+            self.conn = Connection(port, parallel)
+        else:
+            self.conn = Connection.create_from_interface(
+                bind_port=port,
+                parallel=parallel,
+            )
         self.clients = []
         self.parallel = parallel
         ip, port = self.conn.socket.getsockname()

@@ -1,6 +1,5 @@
 import socket
 import time
-import fcntl
 import struct
 from collections import defaultdict
 from queue import Queue
@@ -45,12 +44,13 @@ class Connection(object):
 
     @classmethod
     def create_from_interface(cls, **kwargs):
+        import fcntl
         available_interface = []
         req_ip = 0x8915
         with socket.socket(
             socket.AF_INET,
             socket.SOCK_DGRAM,
-            socket.IPPROTO_UDP
+            socket.IPPROTO_UDP,
         ) as sock:
             for _, interface in socket.if_nameindex():
                 try:
