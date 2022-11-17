@@ -1,6 +1,6 @@
 import socket
-from .segment import Segment
-from typing import NamedTuple
+from .segment import Segment, length
+from typing import NamedTuple, Tuple
 
 
 class Address(NamedTuple):
@@ -8,7 +8,7 @@ class Address(NamedTuple):
     port: int
 
 
-class Connection:
+class Connection(object):
     def __init__(self, bind_port: int | None = None):
         # Init UDP socket
         self.socket = socket.socket(
@@ -25,7 +25,7 @@ class Connection:
         # Send single segment into destination
         self.socket.sendto(msg.to_bytes(), dest)
 
-    def listen_single_segment(self) -> Segment:
+    def listen_single_segment(self) -> Tuple[Segment, Address]:
         # Listen single UDP datagram within timeout and convert into segment
         while True:
             try:
