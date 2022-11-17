@@ -1,5 +1,7 @@
 import socket
 import time
+import fcntl
+import struct
 from collections import defaultdict
 from queue import Queue
 from threading import Thread
@@ -21,24 +23,76 @@ class Address(NamedTuple):
 
 
 class Connection(object):
-    def __init__(self, bind_port: int | None = None, parallel=False):
+    def __init__(self, bind_port: int | None = None, parallel=False, ip=''):
         # Init UDP socket
         self.socket = socket.socket(
             socket.AF_INET,
             socket.SOCK_DGRAM,
-            socket.IPPROTO_UDP,
+            socket.IPPROTO_UDP
         )
+        self.ip = ip
         self.parallel = parallel
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.buffer = defaultdict(Queue)
         if bind_port:
-            self.socket.bind(Address(ip='', port=bind_port))
+            self.socket.bind(Address(self.ip, port=bind_port))
         if self.parallel:
             thread = Thread(target=self._buffer)
             thread.daemon = True
             thread.start()
         else:
             self.socket.settimeout(0.1)
+
+    @classmethod
+    def create_from_interface(cls, **kwargs):
+        available_interface = []
+        req_ip = 0x8915
+        with socket.socket(
+            socket.AF_INET,
+            socket.SOCK_DGRAM,
+            socket.IPPROTO_UDP
+        ) as sock:
+            for _, interface in socket.if_nameindex():
+                try:
+                    ip = fcntl.ioctl(
+                        sock.fileno(),
+                        req_ip,
+                        struct.pack(
+                            '256s',
+                            interface.encode(),
+                        ),
+                    )[20:24]
+                    ip = socket.inet_ntoa(ip)
+                    available_interface.append((interface, ip))
+                except OSError:
+                    continue
+        if not available_interface:
+            Logger.log(
+                '[!] No available interface found, using default ip (all interface).',
+                1,
+            )
+            return cls(ip='', **kwargs)
+        while True:
+            print('[!] INTERFACE LIST =====')
+            i = 1
+            for interface in available_interface:
+                print(f'[{i}] {interface[0]}: {interface[1]}')
+                i += 1
+            print('[!] ====================')
+            x = input('[?] Select interface number you want to choose: ')
+            if not x.isnumeric():
+                print('[!] Input is not numeric!')
+                continue
+            x = int(x)
+            if not (x > 0 and x < i):
+                print('[!] Input is out of range!')
+                continue
+            break
+        Logger.log(f'[!] Selected interface: {available_interface[x - 1][1]}')
+        return cls(
+            **kwargs,
+            ip=available_interface[x - 1][1],
+        )
 
     def send_data(self, msg: Segment, dest: Address):
         # Send single segment into destination
@@ -94,7 +148,8 @@ class Connection(object):
             return
         segment, addr = data
         if segment.flags.test(fin=True, ack=True):
-            Logger.log(f'[!] [Handshake|FIN-ACK] [<{addr}] Received FIN-ACK.', 2)
+            Logger.log(
+                f'[!] [Handshake|FIN-ACK] [<{addr}] Received FIN-ACK.', 2)
 
     def _parallel_listen(
         self,

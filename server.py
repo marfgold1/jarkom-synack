@@ -16,7 +16,10 @@ class Server:
     def __init__(self, path_file: Path, port=1234, parallel=False):
         # Init server
         self.path_file = path_file
-        self.conn = Connection(port, parallel)
+        self.conn = Connection.create_from_interface(
+            port=port,
+            parallel=parallel,
+        )
         self.clients = []
         self.parallel = parallel
         ip, port = self.conn.socket.getsockname()
